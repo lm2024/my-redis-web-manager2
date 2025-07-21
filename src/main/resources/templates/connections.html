@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>连接管理 - Redis Web GUI</title>
+    <th:block th:replace="~{layout :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout :: nav}"></th:block>
+    
+    <div class="container-fluid mt-3">
+        <!-- 页面标题 -->
+        <div class="row mb-4">
+            <div class="col-12 d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-plug me-2"></i>连接管理
+                    </h1>
+                    <p class="text-muted">管理Redis连接配置</p>
+                </div>
+                <a href="@{/redis/connections/new}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>添加连接
+                </a>
+            </div>
+        </div>
+
+        <!-- 连接列表 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-list me-2"></i>连接列表
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div th:if="${connections.empty}" class="text-center text-muted py-5">
+                            <i class="fas fa-database fa-4x mb-3"></i>
+                            <h5>暂无Redis连接</h5>
+                            <p>点击上方"添加连接"按钮创建第一个Redis连接</p>
+                        </div>
+                        
+                        <div th:if="${!connections.empty}">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>连接名称</th>
+                                            <th>主机地址</th>
+                                            <th>端口</th>
+                                            <th>数据库</th>
+                                            <th>状态</th>
+                                            <th>默认连接</th>
+                                            <th>创建时间</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="connection : ${connections}">
+                                            <td>
+                                                <strong th:text="${connection.name}">连接名称</strong>
+                                                <div th:if="${connection.description}" class="text-muted small" th:text="${connection.description}"></div>
+                                            </td>
+                                            <td th:text="${connection.host}">localhost</td>
+                                            <td th:text="${connection.port}">6379</td>
+                                            <td th:text="${connection.database}">0</td>
+                                            <td>
+                                                <span class="status-badge status-online">在线</span>
+                                            </td>
+                                            <td>
+                                                <span th:if="${connection.isDefault}" class="badge bg-primary">默认</span>
+                                                <span th:unless="${connection.isDefault}" class="text-muted">-</span>
+                                            </td>
+                                            <td th:text="${#temporals.format(connection.createdTime, 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button type="button" class="btn btn-outline-primary" 
+                                                            th:data-connection-id="${connection.id}"
+                                                            onclick="testConnection(this.getAttribute('data-connection-id'))"
+                                                            th:title="'测试连接 ' + ${connection.name}">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                    <a th:href="@{'/redis/connections/' + ${connection.id} + '/edit'}" 
+                                                       class="btn btn-outline-secondary" title="编辑连接">
+                                                        <i class="fas fa-edit"></i>
+                                                    </a>
+                                                    <button type="button" class="btn btn-outline-success" 
+                                                            th:data-connection-id="${connection.id}"
+                                                            onclick="setDefaultConnection(this.getAttribute('data-connection-id'))"
+                                                            th:unless="${connection.isDefault}"
+                                                            th:title="'设为默认连接'">
+                                                        <i class="fas fa-star"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-danger" 
+                                                            th:data-connection-id="${connection.id}"
+                                                            th:data-connection-name="${connection.name}"
+                                                            onclick="deleteConnection(this.getAttribute('data-connection-id'), this.getAttribute('data-connection-name'))"
+                                                            th:unless="${connection.isDefault}"
+                                                            th:title="'删除连接'">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 连接统计 -->
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-plug fa-2x text-primary mb-2"></i>
+                        <h5 th:text="${connections.size()}">0</h5>
+                        <p class="text-muted mb-0">总连接数</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                        <h5 th:text="${connections.size()}">0</h5>
+                        <p class="text-muted mb-0">在线连接</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-star fa-2x text-warning mb-2"></i>
+                        <h5 th:text="${#lists.size(connections.?[isDefault == true])}">0</h5>
+                        <p class="text-muted mb-0">默认连接</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试连接结果模态框 -->
+    <div class="modal fade" id="testResultModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">连接测试结果</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="testResultContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script th:inline="javascript">
+        // 定义基础URL变量
+        const connBaseUrl = /*[[@{/redis/connections/}]]*/ '/redis/connections/';
+        // 测试连接
+        function testConnection(connectionId) {
+            const button = event.target.closest('button');
+            const originalText = button.innerHTML;
+            showLoading(button);
+            
+            fetch(connBaseUrl + connectionId + '/test', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading(button, originalText);
+                
+                const modal = new bootstrap.Modal(document.getElementById('testResultModal'));
+                const content = document.getElementById('testResultContent');
+                
+                if (data.success) {
+                    content.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            ${data.message}
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            ${data.message}
+                        </div>
+                    `;
+                }
+                
+                modal.show();
+            })
+            .catch(error => {
+                hideLoading(button, originalText);
+                showAlert('测试连接失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 设置默认连接
+        function setDefaultConnection(connectionId) {
+            if (confirm('确定要设置此连接为默认连接吗？')) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = connBaseUrl + connectionId + '/default';
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+        
+        // 删除连接
+        function deleteConnection(connectionId, connectionName) {
+            if (confirm(`确定要删除连接 "${connectionName}" 吗？此操作不可恢复。`)) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = connBaseUrl + connectionId + '/delete';
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+    </script>
+    
+    <th:block th:replace="~{layout :: scripts}"></th:block>
+</body>
+</html> 

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据浏览 - Redis Web GUI</title>
+    <th:block th:replace="~{layout :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout :: nav}"></th:block>
+    
+    <div class="container-fluid mt-3">
+        <!-- 页面标题 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-search me-2"></i>数据浏览
+                </h1>
+                <p class="text-muted">浏览和管理Redis数据</p>
+            </div>
+        </div>
+
+        <!-- 搜索和过滤 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <form method="get" class="row g-3">
+                            <div class="col-md-3">
+                                <label for="connectionId" class="form-label">选择连接</label>
+                                <select class="form-select" id="connectionId" name="connectionId">
+                                    <option th:each="conn : ${connections}" 
+                                            th:value="${conn.id}" 
+                                            th:text="${conn.name + ' (' + conn.host + ':' + conn.port + ')'}"
+                                            th:selected="${conn.id == connection.id}">
+                                        连接名称
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="pattern" class="form-label">键模式</label>
+                                <input type="text" class="form-control" id="pattern" name="pattern" 
+                                       th:value="${pattern}" placeholder="* 或 user:*">
+                                <div class="form-text">
+                                    支持通配符：* 匹配任意字符，? 匹配单个字符<br>
+                                    <strong>示例：</strong> user:* 查找所有user开头的键，*:1 查找所有以1结尾的键
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="limit" class="form-label">显示数量</label>
+                                <input type="number" class="form-control" id="limit" name="limit" 
+                                       th:value="${limit}" min="10" max="1000" step="10">
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary me-2">
+                                    <i class="fas fa-search me-1"></i>搜索
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" onclick="addNewKey()">
+                                    <i class="fas fa-plus me-1"></i>添加键
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误提示 -->
+        <div th:if="${error}" class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <span th:text="${error}">错误信息</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 键列表 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-list me-2"></i>键列表
+                            <span th:if="${keys}" class="badge bg-secondary ms-2" th:text="${keys.size()}">0</span>
+                        </h5>
+                        <div class="d-flex align-items-center">
+                            <span class="text-muted small me-3" th:text="'连接: ' + ${connection.name}">连接信息</span>
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="batchDeleteBtn" 
+                                    onclick="batchDeleteKeys()" style="display: none;">
+                                <i class="fas fa-trash me-1"></i>批量删除
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div th:if="${keys == null or keys.empty}" class="text-center text-muted py-5">
+                            <i class="fas fa-database fa-4x mb-3"></i>
+                            <h5>暂无数据</h5>
+                            <p>请尝试不同的搜索模式或添加新的键</p>
+                        </div>
+                        
+                        <div th:if="${keys != null and !keys.empty}">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th width="40">
+                                                <input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll()">
+                                            </th>
+                                            <th>键名</th>
+                                            <th>类型</th>
+                                            <th>TTL</th>
+                                            <th>大小</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="key : ${keys}">
+                                            <td>
+                                                <input type="checkbox" class="form-check-input key-checkbox" 
+                                                       th:data-key="${key.name}" onchange="updateBatchDeleteButton()">
+                                            </td>
+                                            <td>
+                                                <a th:href="@{'/redis/browse/' + ${connection.id} + '/key/' + ${key.name}}" 
+                                                   class="text-decoration-none" th:text="${key.name}">键名</a>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-secondary key-type" th:text="${key.type}">类型</span>
+                                            </td>
+                                            <td>
+                                                <span th:if="${key.ttl == null or key.ttl == -1}" class="text-muted">永不过期</span>
+                                                <span th:if="${key.ttl != null and key.ttl != -1}" th:text="${key.ttl + ' 秒'}">TTL</span>
+                                            </td>
+                                            <td>
+                                                <span th:text="${key.size}">大小</span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <a th:href="@{'/redis/browse/' + ${connection.id} + '/key/' + ${key.name}}" 
+                                                       class="btn btn-outline-primary" title="查看">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    <button type="button" class="btn btn-outline-danger" 
+                                                            th:data-key="${key.name}"
+                                                            onclick="deleteKey(this.getAttribute('data-key'))"
+                                                            title="删除">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加新键模态框 -->
+    <div class="modal fade" id="addKeyModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加新键</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addKeyForm">
+                        <div class="mb-3">
+                            <label for="newKey" class="form-label">键名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="newKey" required placeholder="例如：user:1">
+                        </div>
+                        <div class="mb-3">
+                            <label for="newKeyType" class="form-label">数据类型 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="newKeyType" required>
+                                <option value="STRING">String (字符串)</option>
+                                <option value="HASH">Hash (哈希)</option>
+                                <option value="LIST">List (列表)</option>
+                                <option value="SET">Set (集合)</option>
+                                <option value="ZSET">ZSet (有序集合)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newValue" class="form-label">值 <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="newValue" rows="3" required placeholder="键值内容"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newTtl" class="form-label">TTL设置</label>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <input type="number" class="form-control" id="newTtl" min="0" placeholder="秒数">
+                                </div>
+                                <div class="col-md-6">
+                                    <select class="form-select" id="newTtlUnit">
+                                        <option value="seconds">秒</option>
+                                        <option value="minutes">分钟</option>
+                                        <option value="hours">小时</option>
+                                        <option value="days">天</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-text">设置键的过期时间，0表示永不过期</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveNewKey()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script th:inline="javascript">
+        // 获取API URL
+        const apiKeysUrl = /*[[@{/redis/api/keys}]]*/ '/redis/api/keys';
+        
+        // 页面加载完成后初始化搜索功能
+        document.addEventListener('DOMContentLoaded', function() {
+            // 为搜索输入框添加回车键支持
+            const patternInput = document.getElementById('pattern');
+            if (patternInput) {
+                patternInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        document.querySelector('form[method="get"]').submit();
+                    }
+                });
+            }
+            
+            // 显示当前搜索状态
+            const currentPattern = /*[[${pattern}]]*/ '*';
+            if (currentPattern && currentPattern !== '*') {
+                showAlert(`当前搜索模式: <strong>${currentPattern}</strong>`, 'info');
+            }
+        });
+        
+        // 添加新键
+        function addNewKey() {
+            const modal = new bootstrap.Modal(document.getElementById('addKeyModal'));
+            modal.show();
+        }
+        
+        // 保存新键
+        function saveNewKey() {
+            const key = document.getElementById('newKey').value;
+            const keyType = document.getElementById('newKeyType').value;
+            const value = document.getElementById('newValue').value;
+            const ttl = document.getElementById('newTtl').value;
+            const ttlUnit = document.getElementById('newTtlUnit').value;
+            const connectionId = document.getElementById('connectionId').value;
+            
+            if (!key || !value) {
+                showAlert('请填写键名和值', 'danger');
+                return;
+            }
+            
+            // 转换TTL到秒
+            let ttlSeconds = 0;
+            if (ttl && ttl > 0) {
+                switch (ttlUnit) {
+                    case 'seconds':
+                        ttlSeconds = parseInt(ttl);
+                        break;
+                    case 'minutes':
+                        ttlSeconds = parseInt(ttl) * 60;
+                        break;
+                    case 'hours':
+                        ttlSeconds = parseInt(ttl) * 3600;
+                        break;
+                    case 'days':
+                        ttlSeconds = parseInt(ttl) * 86400;
+                        break;
+                }
+            }
+            
+            const formData = new FormData();
+            formData.append('connectionId', connectionId);
+            formData.append('key', key);
+            formData.append('keyType', keyType);
+            formData.append('value', value);
+            if (ttlSeconds > 0) {
+                formData.append('ttl', ttlSeconds);
+            }
+            
+            fetch(apiKeysUrl, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('addKeyModal')).hide();
+                    // 刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('保存失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 删除键
+        function deleteKey(key) {
+            if (!confirm(`确定要删除键 "${key}" 吗？此操作不可恢复。`)) {
+                return;
+            }
+            
+            const connectionId = document.getElementById('connectionId').value;
+            const formData = new FormData();
+            formData.append('connectionId', connectionId);
+            formData.append('key', key);
+            
+            fetch(apiKeysUrl, {
+                method: 'DELETE',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    // 刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('删除失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 全选/取消全选
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.key-checkbox');
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            
+            updateBatchDeleteButton();
+        }
+        
+        // 更新批量删除按钮显示状态
+        function updateBatchDeleteButton() {
+            const checkboxes = document.querySelectorAll('.key-checkbox:checked');
+            const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+            
+            if (checkboxes.length > 0) {
+                batchDeleteBtn.style.display = 'inline-block';
+                batchDeleteBtn.innerHTML = `<i class="fas fa-trash me-1"></i>批量删除 (${checkboxes.length})`;
+            } else {
+                batchDeleteBtn.style.display = 'none';
+            }
+        }
+        
+        // 批量删除键
+        function batchDeleteKeys() {
+            const checkboxes = document.querySelectorAll('.key-checkbox:checked');
+            const keys = Array.from(checkboxes).map(cb => cb.getAttribute('data-key'));
+            
+            if (keys.length === 0) {
+                showAlert('请选择要删除的键', 'warning');
+                return;
+            }
+            
+            if (!confirm(`确定要删除选中的 ${keys.length} 个键吗？此操作不可恢复。\n\n选中的键：${keys.join(', ')}`)) {
+                return;
+            }
+            
+            const connectionId = document.getElementById('connectionId').value;
+            const formData = new FormData();
+            formData.append('connectionId', connectionId);
+            formData.append('keys', JSON.stringify(keys));
+            
+            fetch(apiKeysUrl + '/batch', {
+                method: 'DELETE',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(`成功删除 ${data.deletedCount} 个键`, 'success');
+                    // 刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('批量删除失败: ' + error.message, 'danger');
+            });
+        }
+    </script>
+    
+    <th:block th:replace="~{layout :: scripts}"></th:block>
+</body>
+</html> 

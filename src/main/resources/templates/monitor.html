@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>性能监控 - Redis Web GUI</title>
+    <th:block th:replace="~{layout :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout :: nav}"></th:block>
+    
+    <div class="container-fluid mt-3">
+        <!-- 页面标题 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-chart-line me-2"></i>性能监控
+                </h1>
+                <p class="text-muted">实时监控Redis性能指标</p>
+            </div>
+        </div>
+
+        <!-- 连接选择和时间过滤 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <form method="get" class="row g-3">
+                            <div class="col-md-3">
+                                <label for="connectionId" class="form-label">选择连接</label>
+                                <select class="form-select" id="connectionId" name="connectionId">
+                                    <option th:each="conn : ${connections}" 
+                                            th:value="${conn.id}" 
+                                            th:text="${conn.name + ' (' + conn.host + ':' + conn.port + ')'}"
+                                            th:selected="${conn.id == connection.id}">
+                                        连接名称
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="startTime" class="form-label">开始时间</label>
+                                <input type="datetime-local" class="form-control" id="startTime" name="startTime" 
+                                       th:value="${startTime}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="endTime" class="form-label">结束时间</label>
+                                <input type="datetime-local" class="form-control" id="endTime" name="endTime" 
+                                       th:value="${endTime}">
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary me-2">
+                                    <i class="fas fa-search me-1"></i>查询
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" onclick="refreshData()">
+                                    <i class="fas fa-sync-alt me-1"></i>刷新
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误提示 -->
+        <div th:if="${error}" class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <span th:text="${error}">错误信息</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Redis信息概览 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-memory fa-2x text-primary mb-2"></i>
+                        <h5 th:text="${redisInfo?.get('used_memory_human') ?: 'N/A'}">内存使用</h5>
+                        <p class="text-muted mb-0">已用内存</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-tachometer-alt fa-2x text-success mb-2"></i>
+                        <h5 th:text="${redisInfo?.get('instantaneous_ops_per_sec') ?: '0'}">0</h5>
+                        <p class="text-muted mb-0">每秒操作数</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-users fa-2x text-info mb-2"></i>
+                        <h5 th:text="${redisInfo?.get('connected_clients') ?: '0'}">0</h5>
+                        <p class="text-muted mb-0">连接客户端</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-key fa-2x text-warning mb-2"></i>
+                        <h5 th:text="${redisInfo?.get('db0') ?: '0'}">0</h5>
+                        <p class="text-muted mb-0">键数量</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 监控图表 -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-area me-2"></i>内存使用趋势
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="memoryChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-line me-2"></i>操作频率趋势
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="opsChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 详细监控记录 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-list me-2"></i>监控记录
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div th:if="${records == null or records.empty}" class="text-center text-muted py-5">
+                            <i class="fas fa-chart-line fa-4x mb-3"></i>
+                            <h5>暂无监控数据</h5>
+                            <p>监控数据将每5秒自动收集一次</p>
+                        </div>
+                        
+                        <div th:if="${records != null and !records.empty}">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>时间</th>
+                                            <th>内存使用</th>
+                                            <th>每秒操作数</th>
+                                            <th>连接数</th>
+                                            <th>命中率</th>
+                                            <th>网络输入</th>
+                                            <th>网络输出</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="record : ${records}">
+                                            <td th:text="${#temporals.format(record.recordTime, 'yyyy-MM-dd HH:mm:ss')}">时间</td>
+                                            <td th:text="${record.usedMemoryHuman}">内存</td>
+                                            <td th:text="${record.instantaneousOpsPerSec}">操作数</td>
+                                            <td th:text="${record.totalConnectionsReceived}">连接数</td>
+                                            <td>
+                                                <span th:if="${record.keyspaceHits > 0 and record.keyspaceMisses > 0}" 
+                                                      th:text="${#numbers.formatDecimal(record.keyspaceHits * 100.0 / (record.keyspaceHits + record.keyspaceMisses), 1, 2) + '%'}">
+                                                    命中率
+                                                </span>
+                                                <span th:unless="${record.keyspaceHits > 0 and record.keyspaceMisses > 0}" class="text-muted">-</span>
+                                            </td>
+                                            <td th:text="${record.totalNetInputBytes}">输入</td>
+                                            <td th:text="${record.totalNetOutputBytes}">输出</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script th:inline="javascript">
+        // 获取API URL
+        const apiMonitorLatestUrl = /*[[@{/redis/api/monitor/latest}]]*/ '/redis/api/monitor/latest';
+        
+        // 刷新数据
+        function refreshData() {
+            const connectionId = document.getElementById('connectionId').value;
+            
+            fetch(`${apiMonitorLatestUrl}?connectionId=${connectionId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 更新Redis信息显示
+                    updateRedisInfo(data.data);
+                    showAlert('数据刷新成功', 'success');
+                } else {
+                    showAlert('刷新失败: ' + data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('刷新失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 更新Redis信息显示
+        function updateRedisInfo(redisInfo) {
+            // 这里可以更新页面上的Redis信息显示
+            console.log('Redis信息更新:', redisInfo);
+        }
+        
+        // 初始化图表
+        function initCharts() {
+            // 内存使用趋势图
+            const memoryCtx = document.getElementById('memoryChart').getContext('2d');
+            new Chart(memoryCtx, {
+                type: 'line',
+                data: {
+                    labels: ['1分钟前', '30秒前', '现在'],
+                    datasets: [{
+                        label: '内存使用',
+                        data: [65, 70, 75],
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            // 操作频率趋势图
+            const opsCtx = document.getElementById('opsChart').getContext('2d');
+            new Chart(opsCtx, {
+                type: 'line',
+                data: {
+                    labels: ['1分钟前', '30秒前', '现在'],
+                    datasets: [{
+                        label: '每秒操作数',
+                        data: [1000, 1200, 1100],
+                        borderColor: 'rgb(255, 99, 132)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+        });
+    </script>
+    
+    <th:block th:replace="~{layout :: scripts}"></th:block>
+</body>
+</html> 

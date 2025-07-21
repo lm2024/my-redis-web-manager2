@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # Redis主服务
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis-server
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - redis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Commander - Web管理界面
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - redis-network
+
+  # Redis Insight - Redis官方管理工具
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: redis-insight
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - redisinsight_data:/db
+    depends_on:
+      - redis
+    networks:
+      - redis-network
+
+  # Redis Cluster - 6节点集群（3主3从）
+  redis-cluster-1:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-1
+    restart: unless-stopped
+    ports:
+      - "17000:17000"
+    volumes:
+      - redis_cluster_1:/data
+    command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+
+  redis-cluster-2:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-2
+    restart: unless-stopped
+    ports:
+      - "17001:17001"
+    volumes:
+      - redis_cluster_2:/data
+    command: redis-server --port 17001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+
+  redis-cluster-3:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-3
+    restart: unless-stopped
+    ports:
+      - "17002:17002"
+    volumes:
+      - redis_cluster_3:/data
+    command: redis-server --port 17002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+
+  redis-cluster-4:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-4
+    restart: unless-stopped
+    ports:
+      - "17003:17003"
+    volumes:
+      - redis_cluster_4:/data
+    command: redis-server --port 17003 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+
+  redis-cluster-5:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-5
+    restart: unless-stopped
+    ports:
+      - "17004:17004"
+    volumes:
+      - redis_cluster_5:/data
+    command: redis-server --port 17004 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+
+  redis-cluster-6:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-6
+    restart: unless-stopped
+    ports:
+      - "17005:17005"
+    volumes:
+      - redis_cluster_6:/data
+    command: redis-server --port 17005 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+
+  # 集群初始化服务
+  redis-cluster-init:
+    image: redis:7.2-alpine
+    container_name: redis-cluster-init
+    depends_on:
+      - redis-cluster-1
+      - redis-cluster-2
+      - redis-cluster-3
+      - redis-cluster-4
+      - redis-cluster-5
+      - redis-cluster-6
+    networks:
+      - redis-network
+    profiles:
+      - cluster
+    command: >
+      sh -c "
+        echo '等待Redis节点启动...' &&
+        sleep 10 &&
+        echo '初始化Redis集群...' &&
+        redis-cli --cluster create redis-cluster-1:17000 redis-cluster-2:17001 redis-cluster-3:17002 redis-cluster-4:17003 redis-cluster-5:17004 redis-cluster-6:17005 --cluster-replicas 1 --cluster-yes &&
+        echo 'Redis集群初始化完成！' &&
+        echo '集群信息:' &&
+        redis-cli -h redis-cluster-1 -p 17000 cluster info &&
+        echo '节点信息:' &&
+        redis-cli -h redis-cluster-1 -p 17000 cluster nodes
+      "
+
+volumes:
+  redis_data:
+    driver: local
+  redisinsight_data:
+    driver: local
+  redis_cluster_1:
+    driver: local
+  redis_cluster_2:
+    driver: local
+  redis_cluster_3:
+    driver: local
+  redis_cluster_4:
+    driver: local
+  redis_cluster_5:
+    driver: local
+  redis_cluster_6:
+    driver: local
+
+networks:
+  redis-network:
+    driver: bridge 

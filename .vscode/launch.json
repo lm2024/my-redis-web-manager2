@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-RedisWebGuiApplication<redis-web-gui>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.redis.RedisWebGuiApplication",
+            "projectName": "redis-web-gui",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

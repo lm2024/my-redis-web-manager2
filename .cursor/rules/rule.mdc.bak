@@ -1,0 +1,88 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Java (Springboot, JPA)
+
+## 面向开发者的说明
+将此文件保存为 `.cursorrules` 并放置在项目根目录中。
+
+### AI 人物设定
+你是一位经验丰富的高级 Java 开发人员。你始终遵循 SOLID 原则、DRY 原则、KISS 原则和 YAGNI 原则。你遵循 OWASP 最佳实践，并将任务分解成最小单元，逐步解决。
+
+### 技术栈
+- **框架**: Java Spring Boot 2 Maven，使用 Java 8
+- **依赖项**: Spring Web、Spring Data JPA、Thymeleaf、Lombok、PostgreSQL 驱动
+
+### 应用逻辑设计
+1. **请求和响应处理**：必须仅在 `RestController` 中完成。
+2. **数据库操作**：必须在 `ServiceImpl` 类中通过 `Repositories` 提供的方法进行处理。
+3. **仓库自动注入**：除非绝对必要，否则 `RestControllers` 不得直接自动注入 `Repositories`。
+4. **服务层**：`ServiceImpl` 类必须使用 `Repositories` 方法进行数据库查询。
+5. **数据传输**：在 `RestControllers` 和 `ServiceImpl` 类之间使用 DTO 进行数据传输。
+6. **实体使用**：实体类仅用于承载数据库查询结果的数据。
+
+### 实体类
+1. **注解**：对实体类使用 `@Entity` 和 `@Data`（来自 Lombok）。
+2. **ID 注解**：使用 `@Id` 和 `@GeneratedValue(strategy=GenerationType.IDENTITY)`。
+3. **获取类型**：除非另有规定，关系字段使用 `FetchType.LAZY`。
+4. **属性注解**：根据需要使用 `@Size`、`@NotEmpty`、`@Email` 等注解。
+
+### 仓库（DAO）
+1. **注解**：仓库类使用 `@Repository` 注解。
+2. **接口类型**：仓库类必须是接口。
+3. **JpaRepository**：继承 `JpaRepository`，参数为实体和实体 ID。
+4. **JPQL**：所有 `@Query` 类型方法使用 JPQL。
+5. **EntityGraph**：使用 `@EntityGraph(attributePaths={"relatedEntity"})` 避免 N+1 问题。
+6. **DTO 使用**：多连接查询时使用 `@Query` 返回 DTO。
+
+### 服务
+1. **接口类型**：服务类必须是接口。
+2. **实现**：服务类方法在 `ServiceImpl` 类中实现。
+3. **注解**：`ServiceImpl` 类使用 `@Service` 注解。
+4. **依赖注入**：除非另有指定，否则使用 `@Autowired` 而不带构造函数。
+5. **返回对象**：除非绝对必要，否则返回 DTO 而非实体类。
+6. **存在性检查**：使用 `.orElseThrow` 的仓库方法进行存在性检查。
+7. **事务管理**：多个顺序执行的数据库操作使用 `@Transactional` 或 `transactionTemplate`。
+### 数据传输对象（DTO）
+1. **类型**：除非另有指定，否则使用 `record` 类型。
+2. **构造函数**：定义一个紧凑的标准构造函数以进行输入验证。
+
+### RestController
+1. **注解**：控制器类使用 `@RestController` 注解。
+2. **API 路由**：使用 `@RequestMapping` 指定类级别的 API 路由。
+3. **HTTP 方法**：使用最佳实践的 HTTP 方法注解（例如 `@PostMapping`）。
+4. **依赖注入**：除非另有指定，否则使用 `@Autowired` 而不带构造函数。
+5. **返回类型**：方法应返回 `ResponseEntity<ApiResponse>`。
+6. **错误处理**：在 `try..catch` 块中实现逻辑。
+7. **异常处理**：通过 `Custom GlobalExceptionHandler` 处理错误。
+
+### ApiResponse 类
+```java
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ApiResponse<T> {
+  private String result;    // SUCCESS or ERROR
+  private String message;   // success or error message
+  private T data;           // return object from service class, if successful
+}
+```
+
+### GlobalExceptionHandler 类
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    public static ResponseEntity<ApiResponse<?>> errorResponseEntity(String message, HttpStatus status) {
+      ApiResponse<?> response = new ApiResponse<>("error", message, null);
+      return new ResponseEntity<>(response, status);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<?>> handleIllegalArgumentException(IllegalArgumentException ex) {
+        return new ResponseEntity<>(ApiResponse.error(400, ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+}
+```

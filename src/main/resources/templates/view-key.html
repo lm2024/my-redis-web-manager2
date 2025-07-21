@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="'查看键: ' + ${key} + ' - Redis Web GUI'">查看键值 - Redis Web GUI</title>
+    <th:block th:replace="~{layout :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout :: nav}"></th:block>
+    
+    <div class="container-fluid mt-3">
+        <!-- 页面标题 -->
+        <div class="row mb-4">
+            <div class="col-12 d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-eye me-2"></i>查看键值
+                    </h1>
+                    <p class="text-muted">
+                        <span th:text="'连接: ' + ${connection.name}">连接信息</span> | 
+                        <span th:text="'键: ' + ${key}">键名</span>
+                    </p>
+                </div>
+                <div>
+                    <a th:href="@{'/redis/browse?connectionId=' + ${connection.id}}" class="btn btn-outline-secondary me-2">
+                        <i class="fas fa-arrow-left me-1"></i>返回列表
+                    </a>
+                    <button type="button" class="btn btn-outline-danger" onclick="deleteKey()">
+                        <i class="fas fa-trash me-1"></i>删除键
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误提示 -->
+        <div th:if="${error}" class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <span th:text="${error}">错误信息</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 键信息 -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-info-circle me-2"></i>键信息
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>键名:</strong></td>
+                                <td th:text="${key}">键名</td>
+                            </tr>
+                            <tr>
+                                <td><strong>类型:</strong></td>
+                                <td>
+                                    <span class="badge bg-secondary key-type" th:text="${keyType}">类型</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>TTL:</strong></td>
+                                <td>
+                                    <span th:if="${ttl == null or ttl == -1}" class="text-muted">永不过期</span>
+                                    <span th:if="${ttl != null and ttl != -1}" th:text="${ttl + ' 秒'}">TTL</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>连接:</strong></td>
+                                <td th:text="${connection.name + ' (' + connection.host + ':' + connection.port + ')'}">连接信息</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-edit me-2"></i>操作
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-outline-primary" onclick="editValue()">
+                                <i class="fas fa-edit me-1"></i>编辑值
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" onclick="setTtl()">
+                                <i class="fas fa-clock me-1"></i>设置TTL
+                            </button>
+                            <button type="button" class="btn btn-outline-info" onclick="refreshValue()">
+                                <i class="fas fa-sync-alt me-1"></i>刷新
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 键值内容 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-database me-2"></i>键值内容
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- String类型 -->
+                        <div th:if="${keyType == 'STRING'}">
+                            <div class="mb-3">
+                                <label class="form-label">字符串值</label>
+                                <textarea class="form-control" rows="5" readonly th:text="${value}">值内容</textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Hash类型 -->
+                        <div th:if="${keyType == 'HASH'}">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>字段名</th>
+                                            <th>字段值</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="entry : ${value}">
+                                            <td th:text="${entry.key}">字段名</td>
+                                            <td th:text="${entry.value}">字段值</td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                        th:data-field-key="${entry.key}"
+                                                        th:data-field-value="${entry.value}"
+                                                        onclick="editHashField(this.getAttribute('data-field-key'), this.getAttribute('data-field-value'))">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- List类型 -->
+                        <div th:if="${keyType == 'LIST'}">
+                            <div class="mb-3">
+                                <label class="form-label">列表元素</label>
+                                <div class="list-group">
+                                    <div th:each="item, stat : ${value}" class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <span class="badge bg-secondary me-2" th:text="${stat.index}">索引</span>
+                                            <span th:text="${item}">元素值</span>
+                                        </span>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                th:data-index="${stat.index}"
+                                                th:data-item="${item}"
+                                                onclick="editListElement(this.getAttribute('data-index'), this.getAttribute('data-item'))">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Set类型 -->
+                        <div th:if="${keyType == 'SET'}">
+                            <div class="mb-3">
+                                <label class="form-label">集合元素</label>
+                                <div class="row">
+                                    <div th:each="item : ${value}" class="col-md-3 mb-2">
+                                        <div class="card">
+                                            <div class="card-body p-2">
+                                                <span th:text="${item}">元素值</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ZSet类型 -->
+                        <div th:if="${keyType == 'ZSET'}">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>排名</th>
+                                            <th>成员</th>
+                                            <th>分数</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr th:each="item, stat : ${value}">
+                                            <td th:text="${stat.index + 1}">排名</td>
+                                            <td th:text="${item}">成员</td>
+                                            <td th:text="${'分数'}">分数</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑值模态框 -->
+    <div class="modal fade" id="editValueModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑键值</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editValueForm">
+                        <div class="mb-3">
+                            <label for="newValue" class="form-label">新值 <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="newValue" rows="5" required placeholder="输入新的值"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveNewValue()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置TTL模态框 -->
+    <div class="modal fade" id="setTtlModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">设置TTL</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="setTtlForm">
+                        <div class="mb-3">
+                            <label for="newTtl" class="form-label">TTL（秒）</label>
+                            <input type="number" class="form-control" id="newTtl" min="0" placeholder="留空表示永不过期">
+                            <div class="form-text">设置键的过期时间，0表示永不过期</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveNewTtl()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script th:inline="javascript">
+        // 获取API URL
+        const apiKeysUrl = /*[[@{/redis/api/keys}]]*/ '/redis/api/keys';
+        const apiKeysTtlUrl = /*[[@{/redis/api/keys/ttl}]]*/ '/redis/api/keys/ttl';
+        const browseUrl = /*[[@{/redis/browse}]]*/ '/redis/browse';
+        
+        // 编辑值
+        function editValue() {
+            const currentValue = /*[[${value}]]*/ '';
+            document.getElementById('newValue').value = currentValue;
+            const modal = new bootstrap.Modal(document.getElementById('editValueModal'));
+            modal.show();
+        }
+        
+        // 保存新值
+        function saveNewValue() {
+            const newValue = document.getElementById('newValue').value;
+            if (!newValue) {
+                showAlert('请输入新值', 'danger');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('connectionId', /*[[${connection.id}]]*/ '');
+            formData.append('key', /*[[${key}]]*/ '');
+            formData.append('keyType', /*[[${keyType}]]*/ 'STRING');
+            formData.append('value', newValue);
+            
+            fetch(apiKeysUrl, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('editValueModal')).hide();
+                    // 刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('保存失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 设置TTL
+        function setTtl() {
+            const modal = new bootstrap.Modal(document.getElementById('setTtlModal'));
+            modal.show();
+        }
+        
+        // 保存新TTL
+        function saveNewTtl() {
+            const newTtl = document.getElementById('newTtl').value;
+            
+            const formData = new FormData();
+            formData.append('connectionId', /*[[${connection.id}]]*/ '');
+            formData.append('key', /*[[${key}]]*/ '');
+            if (newTtl && newTtl.trim() !== '') {
+                formData.append('ttl', newTtl);
+            }
+            
+            fetch(apiKeysTtlUrl, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    bootstrap.Modal.getInstance(document.getElementById('setTtlModal')).hide();
+                    // 刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('设置TTL失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 删除键
+        function deleteKey() {
+            if (!confirm(`确定要删除键 "${/*[[${key}]]*/ ''}" 吗？此操作不可恢复。`)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('connectionId', /*[[${connection.id}]]*/ '');
+            formData.append('key', /*[[${key}]]*/ '');
+            
+            fetch(apiKeysUrl, {
+                method: 'DELETE',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    // 返回列表页面
+                    setTimeout(() => {
+                        window.location.href = browseUrl + '?connectionId=' + /*[[${connection.id}]]*/ '';
+                    }, 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('删除失败: ' + error.message, 'danger');
+            });
+        }
+        
+        // 刷新值
+        function refreshValue() {
+            window.location.reload();
+        }
+        
+        // 编辑Hash字段
+        function editHashField(fieldKey, fieldValue) {
+            // 这里可以实现编辑Hash字段的逻辑
+            alert(`编辑Hash字段: ${fieldKey} = ${fieldValue}`);
+        }
+        
+        // 编辑List元素
+        function editListElement(index, item) {
+            // 这里可以实现编辑List元素的逻辑
+            alert(`编辑List元素 [${index}]: ${item}`);
+        }
+    </script>
+    
+    <th:block th:replace="~{layout :: scripts}"></th:block>
+</body>
+</html> 

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${connection.id == null ? '添加连接' : '编辑连接'} + ' - Redis Web GUI'">连接管理 - Redis Web GUI</title>
+    <th:block th:replace="~{layout :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout :: nav}"></th:block>
+    
+    <div class="container-fluid mt-3">
+        <!-- 页面标题 -->
+        <div class="row mb-4">
+            <div class="col-12 d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-plug me-2"></i>
+                        <span th:text="${connection.id == null ? '添加连接' : '编辑连接'}">连接管理</span>
+                    </h1>
+                    <p class="text-muted">配置Redis连接参数</p>
+                </div>
+                <a href="@{/redis/connections}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>返回列表
+                </a>
+            </div>
+        </div>
+
+        <!-- 连接表单 -->
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-cog me-2"></i>连接配置
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form th:action="@{/redis/connections}" th:object="${connection}" method="post">
+                            <input type="hidden" th:field="*{id}" />
+                            <input type="hidden" th:field="*{createdTime}" />
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="name" class="form-label">连接名称 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="name" th:field="*{name}" 
+                                               placeholder="例如：本地Redis" required>
+                                        <div class="form-text">用于标识此连接的名称</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="host" class="form-label">主机地址 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="host" th:field="*{host}" 
+                                               placeholder="localhost" required>
+                                        <div class="form-text">Redis服务器的主机名或IP地址</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="port" class="form-label">端口 <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control" id="port" th:field="*{port}" 
+                                               placeholder="6379" min="1" max="65535" required>
+                                        <div class="form-text">Redis服务器的端口号</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="database" class="form-label">数据库</label>
+                                        <input type="number" class="form-control" id="database" th:field="*{database}" 
+                                               placeholder="0" min="0" max="15" value="0">
+                                        <div class="form-text">Redis数据库编号（0-15）</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="timeout" class="form-label">超时时间（毫秒）</label>
+                                        <input type="number" class="form-control" id="timeout" th:field="*{timeout}" 
+                                               placeholder="5000" min="1000" value="5000">
+                                        <div class="form-text">连接超时时间</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="password" class="form-label">密码</label>
+                                <input type="password" class="form-control" id="password" th:field="*{password}" 
+                                       placeholder="留空表示无密码">
+                                <div class="form-text">Redis服务器的访问密码（可选）</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="description" class="form-label">描述</label>
+                                <textarea class="form-control" id="description" th:field="*{description}" 
+                                          rows="3" placeholder="连接描述信息（可选）"></textarea>
+                                <div class="form-text">用于记录此连接的用途或说明</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="isDefault" th:field="*{isDefault}">
+                                    <label class="form-check-label" for="isDefault">
+                                        设为默认连接
+                                    </label>
+                                    <div class="form-text">设置为默认使用的Redis连接</div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-outline-primary" onclick="testConnection()">
+                                    <i class="fas fa-check me-1"></i>测试连接
+                                </button>
+                                <div>
+                                    <a href="@{/redis/connections}" class="btn btn-secondary me-2">取消</a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save me-1"></i>
+                                        <span th:text="${connection.id == null ? '创建连接' : '保存修改'}">保存</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试连接结果模态框 -->
+    <div class="modal fade" id="testResultModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">连接测试结果</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="testResultContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script th:inline="javascript">
+        // 测试连接
+        const testConnUrl = /*[[@{/redis/connections/test}]]*/ '/redis/connections/test';
+        function testConnection() {
+            const formData = new FormData();
+            formData.append('name', document.getElementById('name').value);
+            formData.append('host', document.getElementById('host').value);
+            formData.append('port', document.getElementById('port').value);
+            formData.append('database', document.getElementById('database').value);
+            formData.append('password', document.getElementById('password').value);
+            formData.append('timeout', document.getElementById('timeout').value);
+            
+            const button = event.target;
+            const originalText = button.innerHTML;
+            showLoading(button);
+            
+            fetch(testConnUrl, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading(button, originalText);
+                
+                const modal = new bootstrap.Modal(document.getElementById('testResultModal'));
+                const content = document.getElementById('testResultContent');
+                
+                if (data.success) {
+                    content.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            ${data.message}
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            ${data.message}
+                        </div>
+                    `;
+                }
+                
+                modal.show();
+            })
+            .catch(error => {
+                hideLoading(button, originalText);
+                showAlert('测试连接失败: ' + error.message, 'danger');
+            });
+        }
+    </script>
+    
+    <th:block th:replace="~{layout :: scripts}"></th:block>
+</body>
+</html> 
